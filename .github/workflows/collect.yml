@@ -33,10 +33,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install tools
+        timeout-minutes: 6
+        continue-on-error: true
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq tesseract-ocr ffmpeg > /dev/null
-          pip install -q yt-dlp pillow
+          pip install -q yt-dlp pillow imageio-ffmpeg
+          # OCR is optional: logger.py falls back to the gauge bar without it.
+          timeout 150 sudo apt-get install -y -qq --no-install-recommends tesseract-ocr > /dev/null \
+            || { timeout 60 sudo apt-get update -qq && timeout 90 sudo apt-get install -y -qq --no-install-recommends tesseract-ocr > /dev/null; } \
+            || echo "tesseract unavailable, using gauge only"
       - name: Sample every 5 minutes
         working-directory: store
         run: |

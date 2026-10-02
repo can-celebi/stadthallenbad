@@ -11,6 +11,7 @@ Appends one row per run to the CSV given as first argument (default data.csv):
 """
 import csv
 import math
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,13 @@ MAX = 1000
 YELLOW, RED = 700, 850
 
 
+def ffmpeg_bin():
+    if shutil.which("ffmpeg"):
+        return "ffmpeg"
+    import imageio_ffmpeg  # pip fallback when apt is unavailable
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
 def grab_frame(path):
     url = subprocess.run(
         ["yt-dlp", "--no-update", "-q", "-g", "-f", "best", CHANNEL],
@@ -40,7 +48,7 @@ def grab_frame(path):
     if not url:
         return False
     subprocess.run(
-        ["ffmpeg", "-loglevel", "error", "-y", "-i", url, "-frames:v", "1", path],
+        [ffmpeg_bin(), "-loglevel", "error", "-y", "-i", url, "-frames:v", "1", path],
         check=True, timeout=60,
     )
     return True
@@ -70,6 +78,8 @@ def gauge_estimate(im):
 
 
 def ocr_count(im):
+    if not shutil.which("tesseract"):
+        return None
     sx, sy = im.width / REF_W, im.height / REF_H
     crop = im.convert("L").crop((int(450 * sx), int(430 * sy), int(700 * sx), int(530 * sy)))
     crop = ImageOps.invert(crop).point(lambda v: 0 if v < 170 else 255)
@@ -107,12 +117,13 @@ def main():
             im = Image.open(frame).convert("RGB")
             n, est = ocr_count(im), gauge_estimate(im)
             # OCR is primary; flag it if it disagrees badly with the bar.
+            # OCR is primary; without it the gauge bar (+-3) stands in.
             note = ""
             if n is None:
-                note = "ocr failed"
+                n, note = est, "gauge only"
             elif abs(n - est) > 40:
                 note = "ocr/gauge mismatch"
-            row = [ts, n if n is not None else "", est, status(n if n is not None else est), note]
+            row = [ts, n, est, status(n), note]
     new = not OUT.exists()
     with OUT.open("a", newline="") as f:
         w = csv.writer(f)
