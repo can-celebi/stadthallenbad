@@ -1,14 +1,17 @@
 name: collect
 
+# One long-running job samples every 10 minutes on its own clock (GitHub's cron
+# is best-effort and often hours late). Each run lasts ~5.5 h, then dispatches
+# its successor. The cron below is only a backstop that restarts the chain if
+# it ever breaks; while a run is active, extra triggers just wait in the queue.
 on:
   schedule:
-    # Every 5 min, 04:00-21:55 UTC (covers Vienna opening hours in CET and CEST;
-    # logger.py skips anything outside them). GitHub often runs these late.
-    - cron: "*/5 4-21 * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: collect
@@ -17,7 +20,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 350
     env:
       TZ: Europe/Vienna
     steps:
@@ -34,14 +37,22 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq tesseract-ocr ffmpeg > /dev/null
           pip install -q yt-dlp pillow
-      - name: Sample
-        run: python logger.py store/data.csv
-      - name: Commit sample
+      - name: Sample every 10 minutes
         working-directory: store
         run: |
-          git diff --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -qam "sample $(date +%FT%R)"
-          for i in 1 2 3; do git push -q && exit 0; git pull -q --rebase; done
-          exit 1
+          end=$(( $(date +%s) + 330 * 60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            python ../logger.py data.csv || true
+            if ! git diff --quiet; then
+              git commit -qam "sample $(date +%FT%R)"
+              for i in 1 2 3; do git push -q && break; git pull -q --rebase; done
+            fi
+            sleep $(( 600 - $(date +%s) % 600 ))
+          done
+      - name: Start the next run
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run collect.yml --ref main -R "$GITHUB_REPOSITORY"
