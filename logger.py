@@ -33,13 +33,6 @@ MAX = 1000
 YELLOW, RED = 700, 850
 
 
-def ffmpeg_bin():
-    if shutil.which("ffmpeg"):
-        return "ffmpeg"
-    import imageio_ffmpeg  # pip fallback when apt is unavailable
-    return imageio_ffmpeg.get_ffmpeg_exe()
-
-
 def grab_frame(path):
     url = subprocess.run(
         ["yt-dlp", "--no-update", "-q", "-g", "-f", "best", CHANNEL],
@@ -48,7 +41,7 @@ def grab_frame(path):
     if not url:
         return False
     subprocess.run(
-        [ffmpeg_bin(), "-loglevel", "error", "-y", "-i", url, "-frames:v", "1", path],
+        ["ffmpeg", "-loglevel", "error", "-y", "-i", url, "-frames:v", "1", path],
         check=True, timeout=60,
     )
     return True
