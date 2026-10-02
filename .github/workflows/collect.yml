@@ -1,6 +1,6 @@
 name: collect
 
-# One long-running job samples every 10 minutes on its own clock (GitHub's cron
+# One long-running job samples every 5 minutes on its own clock (GitHub's cron
 # is best-effort and often hours late). Each run lasts ~5.5 h, then dispatches
 # its successor. The cron below is only a backstop that restarts the chain if
 # it ever breaks; while a run is active, extra triggers just wait in the queue.
@@ -37,7 +37,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq tesseract-ocr ffmpeg > /dev/null
           pip install -q yt-dlp pillow
-      - name: Sample every 10 minutes
+      - name: Sample every 5 minutes
         working-directory: store
         run: |
           git config user.name "github-actions[bot]"
@@ -49,7 +49,7 @@ jobs:
               git commit -qam "sample $(date +%FT%R)"
               for i in 1 2 3; do git push -q && break; git pull -q --rebase; done
             fi
-            sleep $(( 600 - $(date +%s) % 600 ))
+            sleep $(( 300 - $(date +%s) % 300 ))
           done
       - name: Start the next run
         if: success() || failure()

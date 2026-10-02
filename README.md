@@ -7,7 +7,7 @@ The pool publishes its live headcount only as a Twitch stream of a Grafana gauge
 
 - `logger.py` grabs one frame of the stream (yt-dlp + ffmpeg), reads the number with
   tesseract and cross-checks it against the gauge bar's angle. Appends one CSV row.
-- `.github/workflows/collect.yml` runs it every 10 minutes (opening hours only) and
+- `.github/workflows/collect.yml` runs it every 5 minutes (opening hours only) and
   commits the row to the `data` branch (`data.csv`).
 - `docs/index.html` is the dashboard (GitHub Pages). It loads the CSV from the `data`
   branch in the browser and computes everything client-side. Test locally with
