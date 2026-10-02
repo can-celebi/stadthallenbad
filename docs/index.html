@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stadthallenbad Crowd</title>
+<meta name="description" content="How full is Stadthallenbad Wien right now, and when is it usually quiet? Sampled every 5 minutes from the pool's public live gauge.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface-1: #fcfcfb;
+    --surface-2: #f0efec;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --series-today: #2a78d6;
+    --series-typical: #898781;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --seq: #cde2fb,#9ec5f4,#6da7ec,#3987e5,#256abf,#184f95,#0d366b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface-1: #1a1a19;
+      --surface-2: #262624;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255,255,255,0.10);
+      --series-today: #3987e5;
+      --series-typical: #898781;
+      --seq: #104281,#184f95,#256abf,#3987e5,#6da7ec,#9ec5f4,#cde2fb;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --surface-2: #262624;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-today: #3987e5;
+    --series-typical: #898781;
+    --seq: #104281,#184f95,#256abf,#3987e5,#6da7ec,#9ec5f4,#cde2fb;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--text-primary);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 17px; margin: 0 0 2px; }
+  .sub { color: var(--text-secondary); margin: 0 0 24px; }
+  .note { color: var(--text-muted); font-size: 13px; margin: 2px 0 14px; }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  .top { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .top .card { margin: 0; }
+  @media (max-width: 720px) { .top { grid-template-columns: 1fr; } }
+
+  /* hero */
+  .hero-label { color: var(--text-secondary); font-size: 13px; }
+  .hero-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .hero { font-size: 64px; font-weight: 650; line-height: 1.1; }
+  .hero-unit { color: var(--text-secondary); }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; }
+  .status svg { flex: none; }
+  .meter { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2); margin: 16px 0 6px; }
+  .meter-fill { position: absolute; inset: 0 auto 0 0; border-radius: 5px; }
+  .meter-tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--surface-1); }
+  .meter-scale { position: relative; height: 16px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .meter-scale span { position: absolute; transform: translateX(-50%); }
+  .meter-scale span:first-child { transform: none; }
+  .meter-scale span:last-child { transform: translateX(-100%); }
+  .updated { color: var(--text-muted); font-size: 13px; margin-top: 8px; }
+
+  /* stat tiles */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
+  .tile-label { color: var(--text-secondary); font-size: 13px; }
+  .tile-value { font-size: 24px; font-weight: 600; }
+  .tile-foot { color: var(--text-muted); font-size: 12px; }
+
+  /* line chart */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+  .legend i { display: inline-block; width: 16px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 1px; }
+  .legend i.band { height: 10px; opacity: .18; }
+  #line { width: 100%; display: block; touch-action: pan-y; }
+  #line text { font-size: 11px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* heatmap */
+  .heat-wrap { overflow-x: auto; }
+  .heat { display: grid; gap: 2px; min-width: 560px; }
+  .heat .rl { font-size: 12px; color: var(--text-secondary); padding-right: 6px; align-self: center; }
+  .heat .cell { height: 26px; border-radius: 3px; background: var(--surface-2); }
+  .heat .cell.closed { background: transparent; }
+  .heat .cell[data-v]:hover { outline: 2px solid var(--text-primary); outline-offset: -1px; }
+  .heat .xl { font-size: 11px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .seq-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-top: 12px; flex-wrap: wrap; }
+  .seq-legend .sw { display: flex; gap: 2px; }
+  .seq-legend .sw b { width: 22px; height: 10px; border-radius: 2px; display: block; }
+
+  /* quiet table */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--grid); }
+  th { color: var(--text-secondary); font-weight: 500; font-size: 13px; }
+  td.num { font-variant-numeric: tabular-nums; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+  .tbl-wrap { overflow-x: auto; margin-top: 8px; }
+  .tbl-wrap table { font-size: 12px; white-space: nowrap; }
+
+  .tip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    min-width: 120px;
+  }
+  .tip .t { color: var(--text-muted); margin-bottom: 4px; }
+  .tip .r { display: flex; align-items: center; gap: 6px; }
+  .tip .r b { font-size: 14px; font-variant-numeric: tabular-nums; }
+  .tip .r span { color: var(--text-secondary); }
+  .tip .r i { width: 12px; height: 2px; display: inline-block; border-radius: 1px; }
+  footer { color: var(--text-muted); font-size: 13px; margin-top: 28px; }
+  footer a { color: var(--text-secondary); }
+  .empty { color: var(--text-muted); font-size: 14px; padding: 24px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Stadthallenbad crowd</h1>
+  <p class="sub">How many people are in the pool right now, and when it's usually quiet. Sampled every ~5 minutes from the pool's public live gauge.</p>
+
+  <div class="top">
+    <section class="card" aria-live="polite">
+      <div class="hero-label">In the pool now</div>
+      <div class="hero-row">
+        <div class="hero" id="now">–</div>
+        <div class="hero-unit">people</div>
+        <div class="status" id="now-status"></div>
+      </div>
+      <div class="meter" id="meter" role="img"></div>
+      <div class="meter-scale"><span>0</span><span style="left:70%">700 critical</span><span style="left:85%">850 closed</span><span style="left:100%">1,000</span></div>
+      <div class="updated" id="updated">Loading…</div>
+    </section>
+    <section class="card tiles" id="tiles"></section>
+  </div>
+
+  <section class="card">
+    <h2 id="line-title">Today vs a typical day</h2>
+    <p class="note" id="line-note"></p>
+    <div class="legend" id="line-legend"></div>
+    <svg id="line" role="img" aria-label="Headcount over the day"></svg>
+  </section>
+
+  <section class="card">
+    <h2>Weekly pattern</h2>
+    <p class="note" id="heat-note">Average headcount per half hour. Blank cells: pool closed.</p>
+    <div class="heat-wrap"><div class="heat" id="heat"></div></div>
+    <div class="seq-legend" id="seq-legend"></div>
+    <details>
+      <summary>Show as table</summary>
+      <div class="tbl-wrap" id="heat-table"></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Quietest hour per weekday</h2>
+    <p class="note">Lowest average over a one-hour window within opening hours (the last hour before closing is excluded).</p>
+    <div id="quiet"></div>
+  </section>
+
+  <footer>
+    Source: the <a href="https://www.twitch.tv/wienersportstaetten">wienersportstaetten Twitch stream</a> embedded on
+    <a href="https://www.wienersportstaetten.at/de/home/stadthallenbad">wienersportstaetten.at</a>. A scheduled GitHub Action grabs one frame,
+    reads the number with OCR and checks it against the gauge's bar. No AI involved.
+    Opening hours as published; holidays follow Sunday hours.
+    <a href="https://github.com/can-celebi/stadthallenbad/blob/data/data.csv">Raw data (CSV)</a>.
+  </footer>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const DATA_URL = new URLSearchParams(location.search).get('data') || 'https://raw.githubusercontent.com/can-celebi/stadthallenbad/data/data.csv';
+const MAX = 1000, YELLOW = 700, RED = 850;
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAYS_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+// Opening hours in minutes since midnight, Mon..Sun (wienersportstaetten.at).
+const HOURS = [[480, 1290], [390, 1290], [480, 1050], [390, 1290], [480, 1290], [420, 1290], [420, 1080]];
+const SLOT_H = 30;   // heatmap slot, minutes
+const SLOT_L = 15;   // line chart slot, minutes
+
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmtT = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const fmtN = n => Math.round(n).toLocaleString('en-US');
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs = {}, parent) {
+  const e = tag.startsWith('svg:') ? document.createElementNS(SVGNS, tag.slice(4)) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === 'text' ? e.textContent = v : e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const median = a => quantile(a, .5);
+function quantile(a, q) {
+  const s = [...a].sort((x, y) => x - y), p = (s.length - 1) * q, lo = Math.floor(p);
+  return s[lo] + (s[Math.ceil(p)] - s[lo]) * (p - lo);
+}
+const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+
+function weekday(date) {           // 'YYYY-MM-DD' -> 0 = Monday
+  const [y, m, d] = date.split('-').map(Number);
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+}
+function viennaNow() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Vienna', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, min: +p.hour * 60 + +p.minute };
+}
+function statusOf(n) {
+  if (n >= RED) return { key: 'critical', label: 'Closed to new guests', icon: 'x' };
+  if (n >= YELLOW) return { key: 'warning', label: 'Critical', icon: '!' };
+  return { key: 'good', label: 'Uncritical', icon: 'ok' };
+}
+function statusIcon(kind, color) {
+  const s = el('svg:svg', { width: 16, height: 16, viewBox: '0 0 16 16', 'aria-hidden': 'true' });
+  el('svg:circle', { cx: 8, cy: 8, r: 8, fill: color }, s);
+  const d = kind === 'ok' ? 'M4.5 8.2l2.3 2.3 4.7-4.8' : kind === 'x' ? 'M5.5 5.5l5 5M10.5 5.5l-5 5' : 'M8 4.2v4.6M8 11.2v.4';
+  el('svg:path', { d, stroke: '#fff', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s);
+  return s;
+}
+
+// ---------- data ----------
+function parse(text) {
+  const rows = [];
+  for (const line of text.trim().split('\n').slice(1)) {
+    const [ts, count, est, status, note] = line.split(',');
+    if (!ts) continue;
+    const date = ts.slice(0, 10), min = +ts.slice(11, 13) * 60 + +ts.slice(14, 16);
+    rows.push({ ts, t: Date.parse(ts), date, min, wd: weekday(date),
+      count: count === '' ? null : +count, note: note || '' });
+  }
+  return rows;
+}
+
+// Per date, per slot: mean of samples. Returns Map date -> Map slot -> value.
+function bySlot(samples, size) {
+  const acc = new Map();
+  for (const r of samples) {
+    if (!acc.has(r.date)) acc.set(r.date, new Map());
+    const m = acc.get(r.date), s = Math.floor(r.min / size) * size;
+    if (!m.has(s)) m.set(s, []);
+    m.get(s).push(r.count);
+  }
+  for (const m of acc.values()) for (const [s, a] of m) m.set(s, mean(a));
+  return acc;
+}
+
+let rows = [];
+async function load() {
+  try {
+    const res = await fetch(DATA_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    rows = parse(await res.text());
+  } catch (e) {
+    $('updated').textContent = 'Could not load data (' + e.message + ').';
+    return;
+  }
+  render();
+}
+
+function render() {
+  const samples = rows.filter(r => r.count !== null);
+  const now = viennaNow();
+  renderNow(samples, now);
+  renderTiles(samples);
+  renderLine(samples, now);
+  const heat = heatData(samples);
+  renderHeat(heat);
+  renderQuiet(heat);
+}
+
+// ---------- now ----------
+function renderNow(samples, now) {
+  const last = samples[samples.length - 1];
+  const lastRow = rows[rows.length - 1];
+  const meter = $('meter');
+  meter.replaceChildren();
+  if (!last) { $('updated').textContent = 'No readings yet.'; return; }
+  const st = statusOf(last.count);
+  $('now').textContent = fmtN(last.count);
+  const s = $('now-status');
+  s.replaceChildren(statusIcon(st.icon, css('--' + st.key)), document.createTextNode(st.label));
+  el('div', { class: 'meter-fill', style: `width:${Math.min(100, last.count / MAX * 100)}%;background:var(--${st.key})` }, meter);
+  for (const v of [YELLOW, RED]) el('div', { class: 'meter-tick', style: `left:${v / MAX * 100}%` }, meter);
+  meter.setAttribute('aria-label', `${last.count} of ${MAX}`);
+  const ago = Math.round((Date.now() - last.t) / 60000);
+  const agoTxt = ago < 1 ? 'just now' : ago < 90 ? `${ago} min ago` : `${Math.round(ago / 60)} h ago`;
+  const wd = weekday(now.date), [o, c] = HOURS[wd];
+  let msg = `Reading from ${fmtT(last.min)} (${agoTxt}).`;
+  if (now.min < o || now.min >= c) msg += ` Pool is closed now; opens ${fmtT(o)}–${fmtT(c)} on ${DAYS_LONG[wd]}s.`;
+  else if (ago > 30) msg += lastRow && lastRow.note === 'offline' ? ' The live stream is offline.' : ' Collector is lagging.';
+  $('updated').textContent = msg;
+}
+
+function renderTiles(samples) {
+  const t = $('tiles');
+  t.replaceChildren();
+  const days = new Set(samples.map(r => r.date));
+  const open = samples.filter(r => r.count > 0);
+  const peak = samples.reduce((a, r) => (!a || r.count > a.count ? r : a), null);
+  const crit = open.length ? open.filter(r => r.count >= YELLOW).length / open.length : 0;
+  const first = samples[0];
+  const tiles = [
+    ['Days collected', days.size, first ? `since ${first.date}` : ''],
+    ['Readings', fmtN(samples.length), ''],
+    ['Busiest seen', peak ? fmtN(peak.count) : '–', peak ? `${DAYS[peak.wd]} ${peak.date.slice(5)} ${fmtT(peak.min)}` : ''],
+    ['Time at 700+', open.length ? (crit * 100).toFixed(crit && crit < .01 ? 1 : 0) + '%' : '–', 'share of open-hours readings'],
+  ];
+  for (const [l, v, f] of tiles) {
+    const d = el('div', {}, t);
+    el('div', { class: 'tile-label', text: l }, d);
+    el('div', { class: 'tile-value', text: String(v) }, d);
+    if (f) el('div', { class: 'tile-foot', text: f }, d);
+  }
+}
+
+// ---------- today vs typical ----------
+function renderLine(samples, now) {
+  const svg = $('line');
+  svg.replaceChildren();
+  const wd = weekday(now.date), [open, close] = HOURS[wd];
+  $('line-title').textContent = `Today (${DAYS_LONG[wd]}) vs a typical ${DAYS_LONG[wd]}`;
+
+  const slots = bySlot(samples.filter(r => r.wd === wd), SLOT_L);
+  const today = slots.get(now.date) || new Map();
+  const past = [...slots.entries()].filter(([d]) => d !== now.date).map(([, m]) => m);
+  const typical = new Map();
+  for (let s = open; s < close; s += SLOT_L) {
+    const vals = past.map(m => m.get(s)).filter(v => v !== undefined);
+    if (vals.length) typical.set(s, { med: median(vals), lo: quantile(vals, .25), hi: quantile(vals, .75), n: vals.length });
+  }
+  const bandOK = past.length >= 3;
+  $('line-note').textContent = past.length
+    ? `Typical = median of ${past.length} previous ${DAYS_LONG[wd]}${past.length > 1 ? 's' : ''}${bandOK ? '; shaded band = middle 50% of days' : ''}. Opening hours ${fmtT(open)}–${fmtT(close)}.`
+    : `No previous ${DAYS_LONG[wd]}s collected yet, so there is no typical curve to compare against. Opening hours ${fmtT(open)}–${fmtT(close)}.`;
+
+  const lg = $('line-legend');
+  lg.replaceChildren();
+  const key = (color, label, band) => {
+    const s = el('span', {}, lg);
+    el('i', { style: `background:${color}` }, s);
+    if (band) el('i', { class: 'band', style: `background:${color};width:16px;margin-left:-22px` }, s);
+    s.appendChild(document.createTextNode(label));
+  };
+  key(css('--series-today'), 'Today');
+  if (typical.size) key(css('--series-typical'), 'Typical');
+
+  const W = svg.clientWidth || 900, H = 260, m = { l: 40, r: 44, t: 12, b: 26 };
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+  const all = [...today.values(), ...[...typical.values()].map(v => bandOK ? v.hi : v.med)];
+  let ymax = Math.max(100, ...all);
+  ymax = ymax > 600 ? MAX : Math.ceil(ymax * 1.1 / 100) * 100;
+  const x = mm => m.l + (mm - open) / (close - open) * (W - m.l - m.r);
+  const y = v => m.t + (1 - v / ymax) * (H - m.t - m.b);
+
+  const step = ymax <= 300 ? 50 : ymax <= 600 ? 100 : 200;
+  for (let v = 0; v <= ymax; v += step) {
+    el('svg:line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: v ? css('--grid') : css('--axis'), 'stroke-width': 1 }, svg);
+    el('svg:text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', text: fmtN(v) }, svg);
+  }
+  for (const [v, k, lab] of [[YELLOW, '--warning', 'critical'], [RED, '--critical', 'closed']]) {
+    if (v > ymax) continue;
+    el('svg:line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: css(k), 'stroke-width': 1 }, svg);
+    el('svg:text', { x: W - m.r + 4, y: y(v) + 4, text: lab }, svg);
+  }
+  const hstep = W < 500 ? 180 : 120;
+  for (let t = Math.ceil(open / hstep) * hstep; t <= close; t += hstep)
+    el('svg:text', { x: x(t), y: H - 6, 'text-anchor': 'middle', text: fmtT(t) }, svg);
+
+  // Paths with gaps where slots are missing.
+  const path = (map, get) => {
+    let d = '', prev = null;
+    for (let s = open; s < close; s += SLOT_L) {
+      const v = map.get(s);
+      if (v === undefined) { prev = null; continue; }
+      d += (prev === null ? 'M' : 'L') + x(s + SLOT_L / 2).toFixed(1) + ' ' + y(get(v)).toFixed(1);
+      prev = s;
+    }
+    return d;
+  };
+  if (bandOK) {
+    // One closed polygon per contiguous run.
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) {
+        const top = run.map(s => `${x(s + SLOT_L / 2)},${y(typical.get(s).hi)}`);
+        const bot = run.slice().reverse().map(s => `${x(s + SLOT_L / 2)},${y(typical.get(s).lo)}`);
+        el('svg:polygon', { points: top.concat(bot).join(' '), fill: css('--series-typical'), opacity: .14 }, svg);
+      }
+      run = [];
+    };
+    for (let s = open; s < close; s += SLOT_L) typical.has(s) ? run.push(s) : flush();
+    flush();
+  }
+  const line = (d, color) => el('svg:path', { d, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+  if (typical.size) line(path(typical, v => v.med), css('--series-typical'));
+  line(path(today, v => v), css('--series-today'));
+  // Isolated single points would be invisible as paths: draw dots for them.
+  for (const [s, v] of today) if (!today.has(s - SLOT_L) && !today.has(s + SLOT_L))
+    el('svg:circle', { cx: x(s + SLOT_L / 2), cy: y(v), r: 4, fill: css('--series-today'), stroke: css('--surface-1'), 'stroke-width': 2 }, svg);
+  // End label on today's latest point.
+  const lastS = [...today.keys()].sort((a, b) => a - b).pop();
+  if (lastS !== undefined) {
+    el('svg:circle', { cx: x(lastS + SLOT_L / 2), cy: y(today.get(lastS)), r: 4, fill: css('--series-today'), stroke: css('--surface-1'), 'stroke-width': 2 }, svg);
+    el('svg:text', { x: x(lastS + SLOT_L / 2) + 8, y: y(today.get(lastS)) - 8, text: fmtN(today.get(lastS)), style: 'fill:var(--text-primary);font-weight:600' }, svg);
+  }
+  if (!today.size && !typical.size)
+    el('svg:text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', text: 'No readings for this weekday yet' }, svg);
+
+  // Crosshair + tooltip.
+  const cross = el('svg:line', { y1: m.t, y2: H - m.b, stroke: css('--text-muted'), 'stroke-width': 1, visibility: 'hidden' }, svg);
+  const hit = el('svg:rect', { x: m.l, y: 0, width: W - m.l - m.r, height: H, fill: 'transparent' }, svg);
+  const move = ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * W / r.width;
+    let s = open + Math.floor((px - m.l) / (W - m.l - m.r) * (close - open) / SLOT_L) * SLOT_L;
+    s = Math.max(open, Math.min(close - SLOT_L, s));
+    cross.setAttribute('x1', x(s + SLOT_L / 2)); cross.setAttribute('x2', x(s + SLOT_L / 2));
+    cross.setAttribute('visibility', 'visible');
+    const items = [];
+    if (today.has(s)) items.push([fmtN(today.get(s)), 'today', css('--series-today')]);
+    if (typical.has(s)) {
+      const v = typical.get(s);
+      items.push([fmtN(v.med), bandOK ? `typical (${fmtN(v.lo)}–${fmtN(v.hi)})` : 'typical', css('--series-typical')]);
+    }
+    if (!items.length) items.push(['–', 'no data', 'transparent']);
+    showTip(ev, `${fmtT(s)}–${fmtT(s + SLOT_L)}`, items);
+  };
+  hit.addEventListener('pointermove', move);
+  hit.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); hideTip(); });
+}
+
+// ---------- heatmap ----------
+function heatData(samples) {
+  const lo = Math.min(...HOURS.map(h => h[0])), hi = Math.max(...HOURS.map(h => h[1]));
+  const slotsList = [];
+  for (let s = Math.floor(lo / SLOT_H) * SLOT_H; s < hi; s += SLOT_H) slotsList.push(s);
+  const per = bySlot(samples, SLOT_H);
+  const grid = DAYS.map((_, wd) => slotsList.map(s => {
+    const [o, c] = HOURS[wd];
+    const open = s + SLOT_H > o && s < c;
+    const vals = [...per.entries()].filter(([d]) => weekday(d) === wd).map(([, m]) => m.get(s)).filter(v => v !== undefined);
+    return { s, open, v: vals.length ? mean(vals) : null, n: vals.length };
+  }));
+  return { slotsList, grid };
+}
+
+function renderHeat({ slotsList, grid }) {
+  const box = $('heat');
+  box.replaceChildren();
+  box.style.gridTemplateColumns = `34px repeat(${slotsList.length}, minmax(8px, 1fr))`;
+  const ramp = css('--seq').split(',').map(s => s.trim());
+  const vmax = Math.max(100, ...grid.flat().map(c => c.v ?? 0));
+  const top = Math.ceil(vmax / 50) * 50;
+  const colorOf = v => ramp[Math.min(ramp.length - 1, Math.floor(v / top * ramp.length))];
+
+  grid.forEach((row, wd) => {
+    el('div', { class: 'rl', text: DAYS[wd] }, box);
+    for (const c of row) {
+      const d = el('div', { class: 'cell' + (c.open ? '' : ' closed') }, box);
+      if (!c.open) continue;
+      if (c.v !== null) { d.style.background = colorOf(c.v); d.dataset.v = c.v; }
+      d.addEventListener('pointermove', ev => showTip(ev, `${DAYS_LONG[wd]} ${fmtT(c.s)}–${fmtT(c.s + SLOT_H)}`,
+        c.v === null ? [['–', 'no data yet', 'transparent']] : [[fmtN(c.v), `avg, ${c.n} day${c.n > 1 ? 's' : ''}`, 'transparent']]));
+      d.addEventListener('pointerleave', hideTip);
+    }
+  });
+  el('div', {}, box);
+  slotsList.forEach(s => el('div', { class: 'xl', text: s % 120 === 0 ? String(s / 60) : '' }, box));
+
+  const lg = $('seq-legend');
+  lg.replaceChildren();
+  el('span', { text: '0' }, lg);
+  const sw = el('span', { class: 'sw' }, lg);
+  ramp.forEach(c => el('b', { style: `background:${c}` }, sw));
+  el('span', { text: fmtN(top) + ' people' }, lg);
+  const nodata = el('span', { class: 'sw', style: 'margin-left:12px' }, lg);
+  el('b', { style: 'background:var(--surface-2)' }, nodata);
+  el('span', { text: 'no data yet' }, lg);
+
+  // Table view.
+  const tw = $('heat-table');
+  tw.replaceChildren();
+  const tbl = el('table', {}, tw);
+  const hr = el('tr', {}, el('thead', {}, tbl));
+  el('th', { text: '' }, hr);
+  slotsList.forEach(s => el('th', { text: fmtT(s) }, hr));
+  const tb = el('tbody', {}, tbl);
+  grid.forEach((row, wd) => {
+    const tr = el('tr', {}, tb);
+    el('th', { text: DAYS[wd] }, tr);
+    row.forEach(c => el('td', { class: 'num', text: !c.open ? '' : c.v === null ? '·' : fmtN(c.v) }, tr));
+  });
+}
+
+// ---------- quietest ----------
+function renderQuiet({ grid }) {
+  const box = $('quiet');
+  box.replaceChildren();
+  const res = grid.map((row, wd) => {
+    const [, c] = HOURS[wd];
+    let best = null;
+    for (let i = 0; i + 1 < row.length; i++) {
+      const a = row[i], b = row[i + 1];
+      if (!a.open || !b.open || a.v === null || b.v === null) continue;
+      if (b.s + SLOT_H > c - 60) continue;
+      const v = (a.v + b.v) / 2;
+      if (!best || v < best.v) best = { s: a.s, v, n: Math.min(a.n, b.n) };
+    }
+    return best;
+  });
+  if (res.every(r => !r)) {
+    el('div', { class: 'empty', text: 'Not enough data yet. This fills in after a few days of collecting.' }, box);
+    return;
+  }
+  const tbl = el('table', {}, box);
+  const hr = el('tr', {}, el('thead', {}, tbl));
+  ['Day', 'Quietest hour', 'Avg people', 'Based on'].forEach(h => el('th', { text: h }, hr));
+  const tb = el('tbody', {}, tbl);
+  res.forEach((r, wd) => {
+    const tr = el('tr', {}, tb);
+    el('td', { text: DAYS_LONG[wd] }, tr);
+    el('td', { class: 'num', text: r ? `${fmtT(r.s)}–${fmtT(r.s + 60)}` : '–' }, tr);
+    el('td', { class: 'num', text: r ? fmtN(r.v) : '–' }, tr);
+    el('td', { class: 'num', text: r ? `${r.n} day${r.n > 1 ? 's' : ''}` : 'no data yet' }, tr);
+  });
+}
+
+// ---------- tooltip ----------
+const tip = $('tip');
+function showTip(ev, title, items) {
+  tip.replaceChildren();
+  el('div', { class: 't', text: title }, tip);
+  for (const [v, label, color] of items) {
+    const r = el('div', { class: 'r' }, tip);
+    if (color !== 'transparent') el('i', { style: `background:${color}` }, r);
+    el('b', { text: v }, r);
+    el('span', { text: label }, r);
+  }
+  tip.style.display = 'block';
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let lx = ev.clientX + 14, ly = ev.clientY - h - 10;
+  if (lx + w > innerWidth - 8) lx = ev.clientX - w - 14;
+  if (ly < 8) ly = ev.clientY + 16;
+  tip.style.left = lx + 'px'; tip.style.top = ly + 'px';
+}
+function hideTip() { tip.style.display = 'none'; }
+
+let rt;
+addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => rows.length && render(), 150); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => rows.length && render());
+load();
+setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>
