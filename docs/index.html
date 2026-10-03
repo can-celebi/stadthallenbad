@@ -101,6 +101,18 @@
   .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
   .legend i { display: inline-block; width: 16px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 1px; }
   .legend i.band { height: 10px; opacity: .18; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0 12px; }
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; background: var(--surface-2); border-radius: 8px; padding: 2px; }
+  .seg button {
+    font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--text-secondary);
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  }
+  .seg button:hover { color: var(--text-primary); }
+  .seg button[aria-pressed="true"] { background: var(--surface-1); color: var(--text-primary); font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+  .controls select {
+    font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px;
+  }
   #line { width: 100%; display: block; touch-action: pan-y; }
   #line text { font-size: 11px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
 
@@ -164,6 +176,10 @@
 
   <section class="card">
     <h2 id="line-title">Today vs a typical day</h2>
+    <div class="controls">
+      <div class="seg" id="day-seg" role="group" aria-label="Weekday"></div>
+      <select id="day-date" aria-label="Day to show"></select>
+    </div>
     <p class="note" id="line-note"></p>
     <div class="legend" id="line-legend"></div>
     <svg id="line" role="img" aria-label="Headcount over the day"></svg>
@@ -292,6 +308,8 @@ function render() {
   const now = viennaNow();
   renderNow(samples, now);
   renderTiles(samples);
+  if (!sel) sel = initSel(samples, now);
+  renderControls(samples, now);
   renderLine(samples, now);
   const heat = heatData(samples);
   renderHeat(heat);
@@ -343,16 +361,71 @@ function renderTiles(samples) {
   }
 }
 
-// ---------- today vs typical ----------
+// ---------- day picker ----------
+// sel.date is a 'YYYY-MM-DD' or '' (typical curve only). Kept in the URL hash
+// (#fri, #2026-10-02) so a view can be bookmarked.
+let sel = null;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dayLabel(date, now) {
+  if (date === now.date) return 'Today';
+  const [, m, d] = date.split('-').map(Number);
+  return `${DAYS_LONG[weekday(date)]} ${d} ${MONTHS[m - 1]}`;
+}
+function datesFor(samples, wd) {
+  return [...new Set(samples.filter(r => r.wd === wd).map(r => r.date))].sort().reverse();
+}
+function defaultDate(samples, wd, now) {
+  return wd === weekday(now.date) ? now.date : (datesFor(samples, wd)[0] || '');
+}
+function initSel(samples, now) {
+  const h = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(h)) return { wd: weekday(h), date: h };
+  const i = DAYS.findIndex(d => d.toLowerCase() === h);
+  const wd = i >= 0 ? i : weekday(now.date);
+  return { wd, date: defaultDate(samples, wd, now) };
+}
+function renderControls(samples, now) {
+  const seg = $('day-seg');
+  seg.replaceChildren();
+  DAYS.forEach((d, wd) => {
+    const b = el('button', { type: 'button', 'aria-pressed': String(wd === sel.wd), text: d }, seg);
+    b.addEventListener('click', () => {
+      sel = { wd, date: defaultDate(samples, wd, now) };
+      history.replaceState(null, '', '#' + d.toLowerCase());
+      renderControls(samples, now);
+      renderLine(samples, now);
+    });
+  });
+  const dd = $('day-date');
+  dd.replaceChildren();
+  const dates = datesFor(samples, sel.wd);
+  if (sel.date && !dates.includes(sel.date)) dates.unshift(sel.date);
+  for (const d of dates) {
+    const n = samples.filter(r => r.date === d).length;
+    el('option', { value: d, text: `${dayLabel(d, now)}${n ? '' : ' (no readings yet)'}` }, dd);
+  }
+  el('option', { value: '', text: `Typical ${DAYS_LONG[sel.wd]} only` }, dd);
+  dd.value = sel.date;
+  dd.onchange = () => {
+    sel = { wd: sel.wd, date: dd.value };
+    history.replaceState(null, '', '#' + (dd.value || DAYS[sel.wd].toLowerCase()));
+    renderLine(samples, now);
+  };
+}
+
+// ---------- selected day vs typical ----------
 function renderLine(samples, now) {
   const svg = $('line');
   svg.replaceChildren();
-  const wd = weekday(now.date), [open, close] = HOURS[wd];
-  $('line-title').textContent = `Today (${DAYS_LONG[wd]}) vs a typical ${DAYS_LONG[wd]}`;
+  const wd = sel.wd, [open, close] = HOURS[wd];
+  const label = sel.date ? dayLabel(sel.date, now) : '';
+  $('line-title').textContent = sel.date
+    ? `${label}${sel.date === now.date ? ` (${DAYS_LONG[wd]})` : ''} vs a typical ${DAYS_LONG[wd]}`
+    : `A typical ${DAYS_LONG[wd]}`;
 
   const slots = bySlot(samples.filter(r => r.wd === wd), SLOT_L);
-  const today = slots.get(now.date) || new Map();
-  const past = [...slots.entries()].filter(([d]) => d !== now.date).map(([, m]) => m);
+  const today = (sel.date && slots.get(sel.date)) || new Map();
+  const past = [...slots.entries()].filter(([d]) => d !== sel.date).map(([, m]) => m);
   const typical = new Map();
   for (let s = open; s < close; s += SLOT_L) {
     const vals = past.map(m => m.get(s)).filter(v => v !== undefined);
@@ -360,8 +433,8 @@ function renderLine(samples, now) {
   }
   const bandOK = past.length >= 3;
   $('line-note').textContent = past.length
-    ? `Typical = median of ${past.length} previous ${DAYS_LONG[wd]}${past.length > 1 ? 's' : ''}${bandOK ? '; shaded band = middle 50% of days' : ''}. Opening hours ${fmtT(open)}–${fmtT(close)}.`
-    : `No previous ${DAYS_LONG[wd]}s collected yet, so there is no typical curve to compare against. Opening hours ${fmtT(open)}–${fmtT(close)}.`;
+    ? `Typical = median of ${past.length} ${sel.date ? 'other ' : ''}${DAYS_LONG[wd]}${past.length > 1 ? 's' : ''}${bandOK ? '; shaded band = middle 50% of days' : ''}. Opening hours ${fmtT(open)}–${fmtT(close)}.`
+    : `No ${sel.date ? 'other ' : ''}${DAYS_LONG[wd]}s collected yet, so there is no typical curve${sel.date ? ' to compare against' : ''}. Opening hours ${fmtT(open)}–${fmtT(close)}.`;
 
   const lg = $('line-legend');
   lg.replaceChildren();
@@ -371,7 +444,7 @@ function renderLine(samples, now) {
     if (band) el('i', { class: 'band', style: `background:${color};width:16px;margin-left:-22px` }, s);
     s.appendChild(document.createTextNode(label));
   };
-  key(css('--series-today'), 'Today');
+  if (sel.date) key(css('--series-today'), label);
   if (typical.size) key(css('--series-typical'), 'Typical');
 
   const W = svg.clientWidth || 900, H = 260, m = { l: 40, r: 44, t: 12, b: 26 };
@@ -435,7 +508,7 @@ function renderLine(samples, now) {
     el('svg:text', { x: x(lastS + SLOT_L / 2) + 8, y: y(today.get(lastS)) - 8, text: fmtN(today.get(lastS)), style: 'fill:var(--text-primary);font-weight:600' }, svg);
   }
   if (!today.size && !typical.size)
-    el('svg:text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', text: 'No readings for this weekday yet' }, svg);
+    el('svg:text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', text: `No readings for ${DAYS_LONG[wd]}s yet` }, svg);
 
   // Crosshair + tooltip.
   const cross = el('svg:line', { y1: m.t, y2: H - m.b, stroke: css('--text-muted'), 'stroke-width': 1, visibility: 'hidden' }, svg);
@@ -448,7 +521,7 @@ function renderLine(samples, now) {
     cross.setAttribute('x1', x(s + SLOT_L / 2)); cross.setAttribute('x2', x(s + SLOT_L / 2));
     cross.setAttribute('visibility', 'visible');
     const items = [];
-    if (today.has(s)) items.push([fmtN(today.get(s)), 'today', css('--series-today')]);
+    if (today.has(s)) items.push([fmtN(today.get(s)), label === 'Today' ? 'today' : label, css('--series-today')]);
     if (typical.has(s)) {
       const v = typical.get(s);
       items.push([fmtN(v.med), bandOK ? `typical (${fmtN(v.lo)}–${fmtN(v.hi)})` : 'typical', css('--series-typical')]);
