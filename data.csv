@@ -3445,3 +3445,4 @@ timestamp,count,gauge_estimate,status,note
 2026-10-21T07:50:00+02:00,,,,offline
 2026-10-21T07:55:00+02:00,,,,offline
 2026-10-21T08:00:00+02:00,1,0,green,
+2026-10-21T08:05:28+02:00,33,0,green,
