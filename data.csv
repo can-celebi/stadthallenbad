@@ -5721,3 +5721,4 @@ timestamp,count,gauge_estimate,status,note
 2026-11-02T10:35:00+01:00,89,0,green,ocr/gauge mismatch
 2026-11-02T10:40:00+01:00,84,0,green,ocr/gauge mismatch
 2026-11-02T10:45:00+01:00,83,0,green,ocr/gauge mismatch
+2026-11-02T10:51:18+01:00,86,0,green,ocr/gauge mismatch
