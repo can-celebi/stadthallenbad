@@ -6021,3 +6021,4 @@ timestamp,count,gauge_estimate,status,note
 2026-11-03T20:00:00+01:00,0,0,green,gauge only
 2026-11-03T20:05:00+01:00,0,0,green,gauge only
 2026-11-03T20:10:00+01:00,0,0,green,gauge only
+2026-11-03T20:15:00+01:00,0,0,green,gauge only
